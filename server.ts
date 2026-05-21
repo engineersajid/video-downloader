@@ -67,24 +67,29 @@ async function startServer() {
     }
   });
 
-  // [👑 ULTIMATE PLAYER FIX] প্লেয়ারে প্লে ও ডাউনলোড দুটোই রিয়াল সোর্সে নিয়ে যাওয়ার রাউট
+  // [👑 ULTIMATE PLAYER FIX] প্লেয়ারে প্লে ও ডাউনলোড দুটোই রিয়াল সোর্সে নিয়ে যাওয়ার রাউট
   app.get("/api/stream", async (req, res) => {
-    const { quality, title, url } = req.query;
+    // [👑 FIXED]: ResultCard থেকে পুশ করা ডাইনামিক 'filename' প্যারামিটার এখানে ক্যাচ করা হয়েছে
+    const { quality, title, filename, url } = req.query;
 
     if (!url) {
       return res.status(400).send("Target link param is missing.");
     }
 
     const decodedTargetUrl = decodeURIComponent(url as string);
-    const isAudio = quality === "mp3" || quality === "audio";
+    const isAudio =
+      quality === "mp3" || quality === "audio" || quality === "audioOnly";
     const extension = isAudio ? "mp3" : "mp4";
-    const filename =
-      sanitizeFilename((title as string) || "media_stream") + `.${extension}`;
+
+    // ফ্রন্টএন্ড জেনারেটেড ফাইলনেম থাকলে সেটাকে প্রায়োরিটি দেওয়া হবে, অন্যথায় সেফ স্যানিটাইজড ফলব্যাক নাম সেট হবে
+    const finalFilename = filename
+      ? (filename as string)
+      : sanitizeFilename((title as string) || "media_stream") + `.${extension}`;
 
     let sourceMediaUrl = "";
 
     try {
-      // রিয়াল টাইম স্ট্রিম ডিরেক্টরি রেজোলিউশন ম্যাপার
+      // রিয়াল টাইম স্ট্রিম ডিরেক্টরি রেজোলিউশন ম্যাপার
       const cobaltApiResponse = await fetch(
         "https://api.cobalt.tools/api/json",
         {
@@ -96,7 +101,11 @@ async function startServer() {
           body: JSON.stringify({
             url: decodedTargetUrl,
             videoQuality:
-              quality === "360p" ? "360" : quality === "1080p" ? "1080" : "720",
+              quality === "360p" || quality === "360"
+                ? "360"
+                : quality === "1080p" || quality === "1080"
+                  ? "1080"
+                  : "720",
             isAudioOnly: isAudio,
             filenamePattern: "basic",
           }),
@@ -105,12 +114,21 @@ async function startServer() {
 
       if (cobaltApiResponse.ok) {
         const data = await cobaltApiResponse.json();
-        if (data.status === "stream" || data.status === "redirect") {
+        // [👑 FIXED]: Cobalt এর মাল্টিপল রিটার্ন ফরম্যাট (Direct Link অথবা Picker Engine Array) হ্যান্ডলিং সেফগার্ড
+        if (data.url) {
+          sourceMediaUrl = data.url;
+        } else if (
+          data.picker &&
+          Array.isArray(data.picker) &&
+          data.picker.length > 0
+        ) {
+          sourceMediaUrl = data.picker[0].url;
+        } else if (data.status === "stream" || data.status === "redirect") {
           sourceMediaUrl = data.url;
         }
       }
 
-      // [CRITICAL FOR WEBKIT/HTML5 PLAYER]: প্লেয়ার যদি ব্ল্যাঙ্ক ইউআরএল বা ডিরেক্ট ভিডিও সোর্স ট্রিগার করে
+      // [CRITICAL FOR WEBKIT/HTML5 PLAYER]: প্লেয়ার যদি ব্ল্যাঙ্ক ইউআরএল বা ডিরেক্ট ভিডিও সোর্স ট্রিগার করে
       if (
         !sourceMediaUrl ||
         req.headers.range ||
@@ -133,9 +151,15 @@ async function startServer() {
 
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename="${encodeURIComponent(filename)}"`,
+        `attachment; filename="${encodeURIComponent(finalFilename)}"`,
       );
       res.setHeader("Content-Type", isAudio ? "audio/mpeg" : "video/mp4");
+
+      // [👑 FIXED]: Content-Length রিড করে ফরওয়ার্ড করা হয়েছে যাতে ফ্রন্টএন্ডে বাফারিং স্পীড ক্যালকুলেশন কাজ করে
+      const contentLength = response.headers.get("content-length");
+      if (contentLength) {
+        res.setHeader("Content-Length", contentLength);
+      }
 
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);

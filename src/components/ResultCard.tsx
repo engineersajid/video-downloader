@@ -100,12 +100,7 @@ export default function ResultCard({ metadata }: ResultCardProps) {
 
         <div className="flex flex-col md:flex-row gap-6 h-full">
           {/* Aspect ratio video preview block */}
-          <div
-            className="w-full md:w-64 h-48 md:h-full min-h-[180px] rounded-2xl bg-[#030303] relative overflow-hidden shadow-2xl shrink-0 group cursor-pointer"
-            onClick={() => {
-              if (!isPlaying) setIsPlaying(true);
-            }}
-          >
+          <div className="w-full md:w-64 h-48 md:h-full min-h-[180px] rounded-2xl bg-[#030303] relative overflow-hidden shadow-2xl shrink-0 group">
             {isPlaying ? (
               <div className="absolute inset-0 w-full h-full bg-black z-20">
                 {activeOption?.format === "mp3" ||
@@ -155,11 +150,21 @@ export default function ResultCard({ metadata }: ResultCardProps) {
                   referrerPolicy="no-referrer"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/20" />
+
+                {/* [👑 EXCLUSIVE CLICK TRIGGER]: শুধুমাত্র মাঝখানের লাল বাটনে ক্লিক করলেই প্রিভিউ প্লে হবে */}
                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-650 border border-white/10 text-white shadow-2xl">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsPlaying(true);
+                    }}
+                    className="flex h-11 w-11 items-center justify-center rounded-full bg-red-600 border border-white/10 text-white shadow-2xl transform transition hover:scale-110 active:scale-[0.95] cursor-pointer"
+                  >
                     <Play className="h-4 w-4 fill-white pl-0.5" />
-                  </div>
+                  </button>
                 </div>
+
                 <div className="absolute bottom-3 left-3 right-3 flex justify-between items-center">
                   <span
                     className={`px-2 py-0.5 border text-[9px] font-mono font-bold rounded uppercase tracking-widest ${currentTheme.badgeBackground}`}
@@ -271,7 +276,7 @@ export default function ResultCard({ metadata }: ResultCardProps) {
                         <p className="text-xs font-bold text-zinc-100">
                           {opt.label}
                         </p>
-                        <p className="text-[10px] text-zinc-450 font-mono uppercase">
+                        <p className="text-[10px] text-zinc-500 font-mono uppercase">
                           {opt.format} • stream direct
                         </p>
                       </div>
@@ -333,7 +338,7 @@ export default function ResultCard({ metadata }: ResultCardProps) {
             </p>
             <p className="text-2xl font-mono text-red-500 font-extrabold flex items-baseline gap-1">
               128.4{" "}
-              <span className="text-xs text-zinc-450 uppercase font-sans font-semibold tracking-wider">
+              <span className="text-xs text-zinc-500 uppercase font-sans font-semibold tracking-wider">
                 MB/s
               </span>
             </p>
