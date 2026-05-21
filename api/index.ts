@@ -1,7 +1,6 @@
 import express from "express";
 import { Readable } from "stream";
 import dotenv from "dotenv";
-// extractor এর ইম্পোর্ট পাথ ঠিক রাখা হয়েছে
 import {
   extractVideoMetadata,
   detectPlatform,
@@ -19,11 +18,7 @@ app.use(express.json());
 // Enable Broad CORS permissions
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-  }
+  res.setHeader("Access-Control-Allow-Origin", origin || "*");
   res.setHeader(
     "Access-Control-Allow-Methods",
     "GET, POST, OPTIONS, PUT, PATCH, DELETE",
@@ -73,9 +68,13 @@ app.post("/api/extract", async (req, res) => {
   }
 });
 
-// API Route: Streaming Downloads
+// [FIXED] API Route: Streaming Downloads (Real-media pipeline for serverless)
 app.get("/api/stream", async (req, res) => {
-  const { platform, quality, title } = req.query;
+  const { quality, title, url } = req.query;
+
+  if (!url) {
+    return res.status(400).send("Target resource URL parameter is missing.");
+  }
 
   const isAudio = quality === "mp3" || quality === "audio";
   const extension = isAudio ? "mp3" : "mp4";
@@ -84,37 +83,36 @@ app.get("/api/stream", async (req, res) => {
 
   let sourceMediaUrl = "";
 
-  if (isAudio) {
-    // [FIXED] ১০০% স্টেবল, হাই-কোয়ালিটি সিডিএন অডিও সোর্স (যা কখনো ব্লক বা রিডাইরেক্ট করবে না)
-    const audioOptions = [
-      "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-      "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-      "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
-    ];
-    const index = platform === "youtube" ? 0 : platform === "tiktok" ? 1 : 2;
-    sourceMediaUrl = audioOptions[index];
-  } else {
-    // [FIXED] অত্যন্ত রেসপন্সিভ ওপেন সোর্স সিডিএন ভিডিও স্ট্রিম (যা ব্রাউজারে ডিরেক্ট স্ট্রিম ও ডাউনলোড সাপোর্ট করে)
-    if (platform === "youtube") {
-      sourceMediaUrl = "https://vjs.zencdn.net/v/oceans.mp4";
-    } else if (platform === "tiktok") {
-      sourceMediaUrl = "https://media.w3.org/2010/05/sintel/trailer_hd.mp4";
-    } else if (platform === "instagram") {
-      sourceMediaUrl = "https://html5demos.com/assets/dizzy.mp4";
-    } else if (platform === "facebook") {
-      sourceMediaUrl = "https://vjs.zencdn.net/v/oceans.mp4";
-    } else if (platform === "linkedin") {
-      sourceMediaUrl = "https://media.w3.org/2010/05/sintel/trailer_hd.mp4";
-    } else {
-      sourceMediaUrl = "https://vjs.zencdn.net/v/oceans.mp4";
-    }
-  }
-
   try {
+    const cobaltApiResponse = await fetch("https://api.cobalt.tools/api/json", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        url: decodeURIComponent(url as string),
+        videoQuality:
+          quality === "360p" ? "360" : quality === "1080p" ? "1080" : "720",
+        isAudioOnly: isAudio,
+        filenamePattern: "basic",
+      }),
+    });
+
+    if (cobaltApiResponse.ok) {
+      const data = await cobaltApiResponse.json();
+      if (data.status === "stream" || data.status === "redirect") {
+        sourceMediaUrl = data.url;
+      }
+    }
+
+    if (!sourceMediaUrl) {
+      throw new Error("Stream endpoint not resolved.");
+    }
+
     const response = await fetch(sourceMediaUrl, {
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
         Accept: "*/*",
       },
     });
@@ -123,25 +121,23 @@ app.get("/api/stream", async (req, res) => {
       throw new Error(`Target host responded with status ${response.status}`);
     }
 
-    // ফোর্স ব্রাউজার ডাউনলোড হেডারস কনফিগারেশন
     res.setHeader(
       "Content-Disposition",
       `attachment; filename="${encodeURIComponent(filename)}"`,
     );
     res.setHeader("Content-Type", isAudio ? "audio/mpeg" : "video/mp4");
 
-    // প্রক্সি পাইপলাইন চালু
     const nodeStream = Readable.fromWeb(response.body as any);
     nodeStream.pipe(res);
   } catch (err: any) {
-    console.error(
-      "Streaming file failed, executing direct server injection fallback:",
-      err,
-    );
-    // ব্যাকআপ মেকানিজম: যদি কোনো কারণে ফেচ ফেইল করে, রিডাইরেক্ট না করে সরাসরি লিঙ্ক পুশ করা হবে
-    res.redirect(sourceMediaUrl);
+    console.error("Serverless proxy failed, redirecting:", err);
+    if (sourceMediaUrl) {
+      res.redirect(sourceMediaUrl);
+    } else {
+      res.status(500).send("Error compiling video stream.");
+    }
   }
 });
 
-// Vercel Serverless Function এর মেইন এক্সপোর্ট
+// Vercel Serverless Export
 export default app;

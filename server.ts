@@ -4,7 +4,11 @@ import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { Readable } from "stream";
-import { extractVideoMetadata, detectPlatform, sanitizeFilename } from "./src/server/extractor.js";
+import {
+  extractVideoMetadata,
+  detectPlatform,
+  sanitizeFilename,
+} from "./server/extractor.js";
 
 // Load environment variables
 dotenv.config();
@@ -19,20 +23,24 @@ async function startServer() {
   // Middleware
   app.use(express.json());
 
-  // Enable Broad CORS permissions to allow external frontends (e.g., hosted on vercel.app) to smoothly query details/download streams
+  // CORS Permissions Setup
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin) {
-      res.setHeader("Access-Control-Allow-Origin", origin);
-    } else {
-      res.setHeader("Access-Control-Allow-Origin", "*");
-    }
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
-    res.setHeader("Access-Control-Allow-Headers", "X-Requested-With, Content-Type, Authorization, Accept");
+    res.setHeader("Access-Control-Allow-Origin", origin || "*");
+    res.setHeader(
+      "Access-Control-Allow-Methods",
+      "GET, POST, OPTIONS, PUT, PATCH, DELETE",
+    );
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "X-Requested-With, Content-Type, Authorization, Accept",
+    );
     res.setHeader("Access-Control-Allow-Credentials", "true");
-    res.setHeader("Access-Control-Expose-Headers", "Content-Disposition, Content-Type, Content-Length");
+    res.setHeader(
+      "Access-Control-Expose-Headers",
+      "Content-Disposition, Content-Type, Content-Length",
+    );
 
-    // Immediately respond to OPTIONS pre-flight checks
     if (req.method === "OPTIONS") {
       return res.sendStatus(200);
     }
@@ -62,70 +70,93 @@ async function startServer() {
       res.json(metadata);
     } catch (err: any) {
       console.error("Metadata extraction error:", err);
-      res.status(500).json({ error: err.message || "Failed to extract video details" });
+      res
+        .status(500)
+        .json({ error: err.message || "Failed to extract video details" });
     }
   });
 
-  // API Route: Streaming Downloads (Proxies beautiful, fully functional high-fidelity loops)
+  // [FIXED] API Route: রিয়াল-টাইম ডাইনামিক সোর্স প্রক্সি ইঞ্জিন (ডামি ফাইল রিমুভড)
   app.get("/api/stream", async (req, res) => {
-    const { platform, quality, title } = req.query;
-    
-    const isAudio = quality === "mp3" || quality === "audio";
-    const extension = isAudio ? "mp3" : "mp4";
-    const filename = sanitizeFilename((title as string) || "video_download") + `.${extension}`;
+    const { quality, title, url } = req.query;
 
-    // Elegant high-fidelity streams matching the selected platform vibe (Nature, tech, sunset loops, premium high-res streams)
-    let sourceMediaUrl = "";
-
-    if (isAudio) {
-      // Sleek, high-quality audio synthesized audio streams (CCRMA Stanford open library - highly stable, free from bot protection)
-      const audioOptions = [
-        "https://ccrma.stanford.edu/~jos/mp3/pno-cs.mp3",
-        "https://ccrma.stanford.edu/~jos/mp3/guitar.mp3",
-        "https://ccrma.stanford.edu/~jos/mp3/bell.mp3"
-      ];
-      // Select index based on platform to vary slightly
-      const index = platform === "youtube" ? 0 : platform === "tiktok" ? 1 : 2;
-      sourceMediaUrl = audioOptions[index];
-    } else {
-      // Cinematic production-grade mp4 video streams suited for showcase tests (Google Storage bucket samples - 100% bypass of hotlink protections)
-      if (platform === "youtube") {
-        sourceMediaUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
-      } else if (platform === "tiktok") {
-        sourceMediaUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4";
-      } else if (platform === "instagram") {
-        sourceMediaUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4";
-      } else if (platform === "facebook") {
-        sourceMediaUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4";
-      } else if (platform === "linkedin") {
-        sourceMediaUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4";
-      } else {
-        sourceMediaUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
-      }
+    // ইউজারের পাঠানো মেইন লিংকটি যদি না থাকে
+    if (!url) {
+      return res.status(400).send("Target video/audio URL is required.");
     }
 
+    const isAudio = quality === "mp3" || quality === "audio";
+    const extension = isAudio ? "mp3" : "mp4";
+    const filename =
+      sanitizeFilename((title as string) || "download") + `.${extension}`;
+
+    let sourceMediaUrl = "";
+
     try {
-      // Fetch and pipe real physical stream under the client's requested filename
-      const response = await fetch(sourceMediaUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "*/*"
+      // Cobalt API টানেল দিয়ে আসল মিডিয়া বাইনারি লিংক ফেচ করা
+      const cobaltApiResponse = await fetch(
+        "https://api.cobalt.tools/api/json",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            url: decodeURIComponent(url as string),
+            videoQuality:
+              quality === "360p" ? "360" : quality === "1080p" ? "1080" : "720",
+            isAudioOnly: isAudio,
+            filenamePattern: "basic",
+          }),
+        },
+      );
+
+      if (cobaltApiResponse.ok) {
+        const data = await cobaltApiResponse.json();
+        if (data.status === "stream" || data.status === "redirect") {
+          sourceMediaUrl = data.url;
         }
-      });
-      if (!response.ok || !response.body) {
-        throw new Error("Failed to pull raw loop stream pointer");
       }
 
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      if (!sourceMediaUrl) {
+        throw new Error("Unable to parse live stream link from the endpoint.");
+      }
+
+      const response = await fetch(sourceMediaUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          Accept: "*/*",
+        },
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(
+          `Target cloud host responded with status ${response.status}`,
+        );
+      }
+
+      // ডাউনলোড ফোর্স করার জন্য হেডারস
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${encodeURIComponent(filename)}"`,
+      );
       res.setHeader("Content-Type", isAudio ? "audio/mpeg" : "video/mp4");
 
-      // Streams straight back, converting web stream to readable stream in node
+      // নোড জেনারেটর পাইপ দিয়ে সরাসরি ডাউনলোড শুরু করা
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
     } catch (err: any) {
-      console.error("Streaming file failed, directing to redirect fallback:", err);
-      // Fallback: direct browser redirect if streaming layer fails under high congestion
-      res.redirect(sourceMediaUrl);
+      console.error(
+        "Local core proxy engine failed, falling back to direct link:",
+        err,
+      );
+      if (sourceMediaUrl) {
+        res.redirect(sourceMediaUrl);
+      } else {
+        res.status(500).send("Streaming handshake failed.");
+      }
     }
   });
 
@@ -144,9 +175,8 @@ async function startServer() {
     });
   }
 
-  // Bind to 0.0.0.0 (mandatory for containers!)
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 
