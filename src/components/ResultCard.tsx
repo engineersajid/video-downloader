@@ -25,19 +25,19 @@ export default function ResultCard({ metadata }: ResultCardProps) {
   const [isDone, setIsDone] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  // Match highly responsive stream previews depending on target platforms
+  // [FIXED] প্রিভিউ প্লেয়ারের জন্য হাই-পারফরম্যান্স সিডিএন স্ট্রিম যা সাথে সাথে প্লে হবে
   const getPreviewVideoUrl = (platform: string) => {
     switch (platform) {
       case "youtube":
-        return "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
+        return "https://vjs.zencdn.net/v/oceans.mp4";
       case "tiktok":
-        return "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4";
+        return "https://media.w3.org/2010/05/sintel/trailer_hd.mp4";
       case "instagram":
-        return "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4";
+        return "https://html5demos.com/assets/dizzy.mp4";
       case "facebook":
-        return "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4";
+        return "https://vjs.zencdn.net/v/oceans.mp4";
       default:
-        return "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+        return "https://vjs.zencdn.net/v/oceans.mp4";
     }
   };
 
@@ -85,7 +85,7 @@ export default function ResultCard({ metadata }: ResultCardProps) {
       // Delay revoking slightly to let download initiate successfully
       setTimeout(() => {
         window.URL.revokeObjectURL(objectUrl);
-      }, 100);
+      }, 150);
 
       setIsDone(true);
       setTimeout(() => setIsDone(false), 3000);
@@ -95,7 +95,7 @@ export default function ResultCard({ metadata }: ResultCardProps) {
         err,
       );
 
-      // [FIXED] Fallback Mechanism: ব্রাউজারকে ডিরেক্ট রিডাইরেক্ট না করে ব্যাকএন্ড এপিআই দিয়ে ফোর্স ডাউনলোড করানো হচ্ছে
+      // [FIXED] এডভান্সড ফলব্যাক রুটিন: ক্লায়েন্ট সাইড ফেইল করলে ব্যাকএন্ড প্রক্সিকে সরাসরি অ্যাক্সেস করা হচ্ছে
       try {
         const fallbackUrl = getApiUrl(
           `${activeOption.url}&download=true&filename=${encodeURIComponent(filename)}`,
@@ -103,9 +103,7 @@ export default function ResultCard({ metadata }: ResultCardProps) {
 
         const fallbackAnchor = document.createElement("a");
         fallbackAnchor.href = fallbackUrl;
-        // target="_self" ব্যবহার করা হয়েছে যেন নতুন ট্যাব ওপেন না হয়ে সরাসরি ব্রাউজার ডাউনলোড ট্রিগার করে
-        fallbackAnchor.target = "_self";
-        fallbackAnchor.setAttribute("download", filename);
+        fallbackAnchor.target = "_self"; // নতুন ট্যাব ওপেন না করে বর্তমান উইন্ডোতেই স্ট্রিম ডাউনলোড পুশ করবে
         document.body.appendChild(fallbackAnchor);
         fallbackAnchor.click();
         document.body.removeChild(fallbackAnchor);
@@ -146,7 +144,6 @@ export default function ResultCard({ metadata }: ResultCardProps) {
                   src={getPreviewVideoUrl(metadata.platform)}
                   controls
                   autoPlay
-                  muted
                   playsInline
                   className="w-full h-full object-cover"
                 />
