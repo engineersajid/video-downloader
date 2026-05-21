@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   Zap,
   Activity,
+  Film,
 } from "lucide-react";
 
 interface ResultCardProps {
@@ -25,28 +26,12 @@ export default function ResultCard({ metadata }: ResultCardProps) {
   const [isDone, setIsDone] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  // [FIXED] প্রিভিউ প্লেয়ারের জন্য হাই-পারফরম্যান্স সিডিএন স্ট্রিম যা সাথে সাথে প্লে হবে
-  const getPreviewVideoUrl = (platform: string) => {
-    switch (platform) {
-      case "youtube":
-        return "https://vjs.zencdn.net/v/oceans.mp4";
-      case "tiktok":
-        return "https://media.w3.org/2010/05/sintel/trailer_hd.mp4";
-      case "instagram":
-        return "https://html5demos.com/assets/dizzy.mp4";
-      case "facebook":
-        return "https://vjs.zencdn.net/v/oceans.mp4";
-      default:
-        return "https://vjs.zencdn.net/v/oceans.mp4";
-    }
-  };
-
   // Find currently selected option
   const activeOption =
     metadata.options.find((opt) => opt.id === selectedOptionId) ||
     metadata.options[0];
 
-  // Initiate direct browser download stream as a chunked blob bypasses all same-origin redirects and sandbox blocks
+  // Initiate direct browser download stream immediately
   const handleDownloadTrigger = async () => {
     if (!activeOption) return;
     setIsProcessing(true);
@@ -62,30 +47,22 @@ export default function ResultCard({ metadata }: ResultCardProps) {
 
     try {
       // Simulate rapid premium handshake with server bypass
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
-      const downloadUrl = getApiUrl(activeOption.url);
-
-      // Real Ajax Blob fetch is 100% bypass of iframe download blocks and local SPA routing interceptions
-      const response = await fetch(downloadUrl);
-      if (!response.ok) {
-        throw new Error(`Cloud download failed with status ${response.status}`);
-      }
-
-      const mediaBlob = await response.blob();
-      const objectUrl = window.URL.createObjectURL(mediaBlob);
+      // [FIXED] মেমরিতে Blob জমানো ছাড়া সরাসরি ব্রাউজারে ইনস্ট্যান্ট ডাউনলোড পুশ করার টেকনিক
+      const downloadUrl = getApiUrl(
+        activeOption.url.includes("?")
+          ? `${activeOption.url}&download=true&filename=${encodeURIComponent(filename)}`
+          : `${activeOption.url}?download=true&filename=${encodeURIComponent(filename)}`,
+      );
 
       const anchor = document.createElement("a");
-      anchor.href = objectUrl;
-      anchor.download = filename;
+      anchor.href = downloadUrl;
+      anchor.setAttribute("download", filename);
+      anchor.target = "_self"; // নতুন ট্যাব ওপেন না করে কারেন্ট উইন্ডোতেই ডাউনলোড উইজেট কল করবে
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
-
-      // Delay revoking slightly to let download initiate successfully
-      setTimeout(() => {
-        window.URL.revokeObjectURL(objectUrl);
-      }, 150);
 
       setIsDone(true);
       setTimeout(() => setIsDone(false), 3000);
@@ -95,15 +72,16 @@ export default function ResultCard({ metadata }: ResultCardProps) {
         err,
       );
 
-      // [FIXED] এডভান্সড ফলব্যাক রুটিন: ক্লায়েন্ট সাইড ফেইল করলে ব্যাকএন্ড প্রক্সিকে সরাসরি অ্যাক্সেস করা হচ্ছে
       try {
         const fallbackUrl = getApiUrl(
-          `${activeOption.url}&download=true&filename=${encodeURIComponent(filename)}`,
+          activeOption.url.includes("?")
+            ? `${activeOption.url}&download=true&filename=${encodeURIComponent(filename)}`
+            : `${activeOption.url}?download=true&filename=${encodeURIComponent(filename)}`,
         );
 
         const fallbackAnchor = document.createElement("a");
         fallbackAnchor.href = fallbackUrl;
-        fallbackAnchor.target = "_self"; // নতুন ট্যাব ওপেন না করে বর্তমান উইন্ডোতেই স্ট্রিম ডাউনলোড পুশ করবে
+        fallbackAnchor.target = "_self";
         document.body.appendChild(fallbackAnchor);
         fallbackAnchor.click();
         document.body.removeChild(fallbackAnchor);
@@ -139,14 +117,31 @@ export default function ResultCard({ metadata }: ResultCardProps) {
             }}
           >
             {isPlaying ? (
+              // [FIXED] হার্ডকোডেড সিডিএন চেঞ্জ করে ডাইনামিক প্লেয়ার অ্যাড করা হয়েছে যা অডিও/ভিডিও দুইটাই প্লে করবে
               <div className="absolute inset-0 w-full h-full bg-black z-20">
-                <video
-                  src={getPreviewVideoUrl(metadata.platform)}
-                  controls
-                  autoPlay
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
+                {activeOption?.format === "mp3" ||
+                activeOption?.quality === "audio" ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-4 text-center bg-zinc-950">
+                    <Music className="h-10 w-10 text-red-500 animate-bounce" />
+                    <span className="text-[11px] font-mono text-zinc-400 truncate max-w-full">
+                      Streaming Audio Track...
+                    </span>
+                    <audio
+                      src={getApiUrl(activeOption.url)}
+                      controls
+                      autoPlay
+                      className="w-full max-w-[200px] h-8 mt-1"
+                    />
+                  </div>
+                ) : (
+                  <video
+                    src={getApiUrl(activeOption.url)}
+                    controls
+                    autoPlay
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
+                )}
                 <button
                   type="button"
                   onClick={(e) => {
@@ -213,7 +208,7 @@ export default function ResultCard({ metadata }: ResultCardProps) {
 
               <h2
                 id="result-video-title"
-                className="text-xl md:text-2xl font-bold tracking-tight text-white leading-snug"
+                className="text-xl md:text-2xl font-bold tracking-tight text-white leading-snug uppercase"
               >
                 {metadata.title}
               </h2>
@@ -273,6 +268,7 @@ export default function ResultCard({ metadata }: ResultCardProps) {
                     onClick={() => {
                       setSelectedOptionId(opt.id);
                       setIsDone(false);
+                      setIsPlaying(false); // কোয়ালিটি ড্রপডাউন পরিবর্তন করলে প্রিভিউ প্লেয়ার রিসেট হবে নতুন ট্র্যাক লোড করার জন্য
                     }}
                     className={`w-full flex items-center justify-between p-3 rounded-xl border text-left transition-all duration-300 cursor-pointer ${
                       isSelected
