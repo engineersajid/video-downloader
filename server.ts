@@ -21,7 +21,7 @@ async function startServer() {
 
   app.use(express.json());
 
-  // CORS Config
+  // Full CORS with complete streaming support headers
   app.use((req, res, next) => {
     const origin = req.headers.origin;
     res.setHeader("Access-Control-Allow-Origin", origin || "*");
@@ -67,14 +67,15 @@ async function startServer() {
     }
   });
 
-  // [ULTIMATE FIX] প্লেয়ারে প্লে এবং ডাউনলোড দুটোই একসাথে রিয়াল-টাইমে করার ইঞ্জিন
+  // [👑 ULTIMATE PLAYER FIX] প্লেয়ারে প্লে ও ডাউনলোড দুটোই রিয়াল সোর্সে নিয়ে যাওয়ার রাউট
   app.get("/api/stream", async (req, res) => {
     const { quality, title, url } = req.query;
 
     if (!url) {
-      return res.status(400).send("Target dynamic URL parameter is missing.");
+      return res.status(400).send("Target link param is missing.");
     }
 
+    const decodedTargetUrl = decodeURIComponent(url as string);
     const isAudio = quality === "mp3" || quality === "audio";
     const extension = isAudio ? "mp3" : "mp4";
     const filename =
@@ -83,7 +84,7 @@ async function startServer() {
     let sourceMediaUrl = "";
 
     try {
-      // Cobalt API থেকে রিয়াল ডাইনামিক সোর্স ইউআরএল জেনারেট করা
+      // রিয়াল টাইম স্ট্রিম ডিরেক্টরি রেজোলিউশন ম্যাপার
       const cobaltApiResponse = await fetch(
         "https://api.cobalt.tools/api/json",
         {
@@ -93,7 +94,7 @@ async function startServer() {
             Accept: "application/json",
           },
           body: JSON.stringify({
-            url: decodeURIComponent(url as string),
+            url: decodedTargetUrl,
             videoQuality:
               quality === "360p" ? "360" : quality === "1080p" ? "1080" : "720",
             isAudioOnly: isAudio,
@@ -109,17 +110,16 @@ async function startServer() {
         }
       }
 
-      // যদি কোনো কারণে টানেল কাজ না করে, ওরিজিনাল লিংকে রিডাইরেক্ট করবে (প্লেয়ার যেন ব্ল্যাঙ্ক না থাকে)
-      if (!sourceMediaUrl) {
-        return res.redirect(decodeURIComponent(url as string));
+      // [CRITICAL FOR WEBKIT/HTML5 PLAYER]: প্লেয়ার যদি ব্ল্যাঙ্ক ইউআরএল বা ডিরেক্ট ভিডিও সোর্স ট্রিগার করে
+      if (
+        !sourceMediaUrl ||
+        req.headers.range ||
+        req.headers["user-agent"]?.includes("ExoPlayer")
+      ) {
+        return res.redirect(sourceMediaUrl || decodedTargetUrl);
       }
 
-      // [CRITICAL FOR PLAYER] ব্রাউজার প্লেয়ার যদি পারশিয়াল/রেঞ্জ ডেটা রিকোয়েস্ট করে (ভিডিও প্লে করার জন্য)
-      if (req.headers.range) {
-        return res.redirect(sourceMediaUrl);
-      }
-
-      // নরমাল ডাউনলোডের জন্য স্ট্রিম পাইপলাইন (বাটনে ক্লিক করলে যা কাজ করে)
+      // ডাউনলোড পাইপলাইন প্রক্সি (ফাইল সেভ করার জন্য)
       const response = await fetch(sourceMediaUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
@@ -140,12 +140,8 @@ async function startServer() {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
     } catch (err) {
-      console.error(
-        "Core streaming engine bypass, redirecting to raw source:",
-        err,
-      );
-      if (sourceMediaUrl) res.redirect(sourceMediaUrl);
-      else res.redirect(decodeURIComponent(url as string));
+      console.error("Streaming fallback safety activated:", err);
+      res.redirect(sourceMediaUrl || decodedTargetUrl);
     }
   });
 
@@ -162,7 +158,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () =>
-    console.log(`[CORE RUNNING] http://localhost:${PORT}`),
+    console.log(`Backend server synchronized on port ${PORT}`),
   );
 }
 
