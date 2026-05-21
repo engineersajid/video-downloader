@@ -10,7 +10,6 @@ import {
   ShieldCheck,
   Zap,
   Activity,
-  Film,
 } from "lucide-react";
 
 interface ResultCardProps {
@@ -46,10 +45,8 @@ export default function ResultCard({ metadata }: ResultCardProps) {
     const filename = `${titleCleaned}.${activeOption.format}`;
 
     try {
-      // Simulate rapid premium handshake with server bypass
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // [FIXED] মেমরিতে Blob জমানো ছাড়া সরাসরি ব্রাউজারে ইনস্ট্যান্ট ডাউনলোড পুশ করার টেকনিক
       const downloadUrl = getApiUrl(
         activeOption.url.includes("?")
           ? `${activeOption.url}&download=true&filename=${encodeURIComponent(filename)}`
@@ -59,7 +56,7 @@ export default function ResultCard({ metadata }: ResultCardProps) {
       const anchor = document.createElement("a");
       anchor.href = downloadUrl;
       anchor.setAttribute("download", filename);
-      anchor.target = "_self"; // নতুন ট্যাব ওপেন না করে কারেন্ট উইন্ডোতেই ডাউনলোড উইজেট কল করবে
+      anchor.target = "_self";
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
@@ -67,29 +64,23 @@ export default function ResultCard({ metadata }: ResultCardProps) {
       setIsDone(true);
       setTimeout(() => setIsDone(false), 3000);
     } catch (err) {
-      console.error(
-        "Downloader interface trigger failed direct stream, applying API Force-Download Fallback:",
-        err,
-      );
-
+      console.error("Downloader failed direct stream:", err);
       try {
         const fallbackUrl = getApiUrl(
           activeOption.url.includes("?")
             ? `${activeOption.url}&download=true&filename=${encodeURIComponent(filename)}`
             : `${activeOption.url}?download=true&filename=${encodeURIComponent(filename)}`,
         );
-
         const fallbackAnchor = document.createElement("a");
         fallbackAnchor.href = fallbackUrl;
         fallbackAnchor.target = "_self";
         document.body.appendChild(fallbackAnchor);
         fallbackAnchor.click();
         document.body.removeChild(fallbackAnchor);
-
         setIsDone(true);
         setTimeout(() => setIsDone(false), 3000);
       } catch (fallbackErr) {
-        console.error("Advanced API download fallback failed:", fallbackErr);
+        console.error("Fallback failed:", fallbackErr);
       }
     } finally {
       setIsProcessing(false);
@@ -101,9 +92,8 @@ export default function ResultCard({ metadata }: ResultCardProps) {
       id="result-metadata-container"
       className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full"
     >
-      {/* CARD 1: Main Info Bento Unit (col-span-8) */}
+      {/* CARD 1: Main Info Bento Unit */}
       <div className="col-span-1 lg:col-span-8 bg-[#0A0A0A]/40 border border-white/5 rounded-3xl p-6 backdrop-blur-xl relative overflow-hidden group hover:border-white/10 transition-all duration-300 flex flex-col justify-between min-h-[380px]">
-        {/* Neon top border line decoration */}
         <div
           className={`absolute top-0 left-0 w-full h-[3px] ${currentTheme.topLineHighlight}`}
         />
@@ -117,7 +107,6 @@ export default function ResultCard({ metadata }: ResultCardProps) {
             }}
           >
             {isPlaying ? (
-              // [FIXED] হার্ডকোডেড সিডিএন চেঞ্জ করে ডাইনামিক প্লেয়ার অ্যাড করা হয়েছে যা অডিও/ভিডিও দুইটাই প্লে করবে
               <div className="absolute inset-0 w-full h-full bg-black z-20">
                 {activeOption?.format === "mp3" ||
                 activeOption?.quality === "audio" ? (
@@ -127,6 +116,7 @@ export default function ResultCard({ metadata }: ResultCardProps) {
                       Streaming Audio Track...
                     </span>
                     <audio
+                      key={activeOption?.id || "audio-stream"}
                       src={getApiUrl(activeOption.url)}
                       controls
                       autoPlay
@@ -135,6 +125,7 @@ export default function ResultCard({ metadata }: ResultCardProps) {
                   </div>
                 ) : (
                   <video
+                    key={activeOption?.id || "video-stream"}
                     src={getApiUrl(activeOption.url)}
                     controls
                     autoPlay
@@ -163,17 +154,12 @@ export default function ResultCard({ metadata }: ResultCardProps) {
                   className="h-full w-full object-cover transition-all duration-500 group-hover:scale-105"
                   referrerPolicy="no-referrer"
                 />
-                {/* Dark contrast masking overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/20" />
-
-                {/* Quick Play visual indicator */}
                 <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300">
                   <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-650 border border-white/10 text-white shadow-2xl">
                     <Play className="h-4 w-4 fill-white pl-0.5" />
                   </div>
                 </div>
-
-                {/* Overlay indicators alignment */}
                 <div className="absolute bottom-3 left-3 right-3 flex justify-between items-center">
                   <span
                     className={`px-2 py-0.5 border text-[9px] font-mono font-bold rounded uppercase tracking-widest ${currentTheme.badgeBackground}`}
@@ -193,7 +179,6 @@ export default function ResultCard({ metadata }: ResultCardProps) {
           {/* Info Details container */}
           <div className="flex flex-col justify-between py-1 flex-grow">
             <div>
-              {/* Dynamic Badges */}
               <div className="flex flex-wrap gap-2 mb-3">
                 <span
                   className={`px-2 py-1 rounded border text-[9px] font-bold uppercase tracking-wider ${currentTheme.badgeBackground}`}
@@ -218,7 +203,6 @@ export default function ResultCard({ metadata }: ResultCardProps) {
               </p>
             </div>
 
-            {/* Internal dual status indicators grid */}
             <div className="grid grid-cols-2 gap-4 mt-4 md:mt-0">
               <div className="bg-zinc-900/40 p-3.5 rounded-2xl border border-white/5">
                 <p className="text-[9px] text-zinc-500 uppercase font-bold tracking-widest font-mono mb-1">
@@ -247,15 +231,13 @@ export default function ResultCard({ metadata }: ResultCardProps) {
         </div>
       </div>
 
-      {/* CARD 2: Right-hand Selector & Action Grid (col-span-4) */}
+      {/* CARD 2: Right-hand Selector */}
       <div className="col-span-1 lg:col-span-4 flex flex-col gap-6">
-        {/* Choices box */}
         <div className="flex-1 bg-[#0A0A0A]/40 border border-white/5 rounded-3xl p-5 backdrop-blur-xl relative overflow-hidden flex flex-col justify-between">
           <div>
             <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4">
               Choose Resolution
             </h3>
-
             <div className="space-y-2">
               {metadata.options.map((opt) => {
                 const isSelected = opt.id === selectedOptionId;
@@ -268,7 +250,6 @@ export default function ResultCard({ metadata }: ResultCardProps) {
                     onClick={() => {
                       setSelectedOptionId(opt.id);
                       setIsDone(false);
-                      setIsPlaying(false); // কোয়ালিটি ড্রপডাউন পরিবর্তন করলে প্রিভিউ প্লেয়ার রিসেট হবে নতুন ট্র্যাক লোড করার জন্য
                     }}
                     className={`w-full flex items-center justify-between p-3 rounded-xl border text-left transition-all duration-300 cursor-pointer ${
                       isSelected
@@ -278,11 +259,7 @@ export default function ResultCard({ metadata }: ResultCardProps) {
                   >
                     <div className="flex items-center gap-3">
                       <div
-                        className={`w-8 h-8 rounded flex items-center justify-center text-[11px] font-bold ${
-                          isSelected
-                            ? "bg-red-600 text-white shadow-md shadow-red-500/20"
-                            : "bg-zinc-800 text-zinc-400"
-                        }`}
+                        className={`w-8 h-8 rounded flex items-center justify-center text-[11px] font-bold ${isSelected ? "bg-red-600 text-white shadow-md shadow-red-500/20" : "bg-zinc-800 text-zinc-400"}`}
                       >
                         {isMediaAudio
                           ? "MP3"
@@ -310,7 +287,6 @@ export default function ResultCard({ metadata }: ResultCardProps) {
             </div>
           </div>
 
-          {/* Download trigger protocol */}
           <div className="pt-5 mt-4 border-t border-white/5">
             <button
               id="btn-trigger-download"
@@ -346,7 +322,7 @@ export default function ResultCard({ metadata }: ResultCardProps) {
           </div>
         </div>
 
-        {/* Speed Indicator Badge Bento Box */}
+        {/* Speed Indicator Bento */}
         <div className="h-28 bg-[#0A0A0A]/40 border border-white/5 rounded-3xl p-5 flex items-center gap-4 hover:border-white/10 transition-all duration-300">
           <div className="p-3 bg-red-600/10 rounded-2xl border border-red-500/10">
             <Zap className="h-6 w-6 text-red-500" />
