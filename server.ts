@@ -10,7 +10,6 @@ import {
   sanitizeFilename,
 } from "./server/extractor.js";
 
-// Load environment variables
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -20,10 +19,9 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Middleware
   app.use(express.json());
 
-  // CORS Permissions Setup
+  // CORS Config
   app.use((req, res, next) => {
     const origin = req.headers.origin;
     res.setHeader("Access-Control-Allow-Origin", origin || "*");
@@ -33,12 +31,12 @@ async function startServer() {
     );
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "X-Requested-With, Content-Type, Authorization, Accept",
+      "X-Requested-With, Content-Type, Authorization, Accept, Range",
     );
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader(
       "Access-Control-Expose-Headers",
-      "Content-Disposition, Content-Type, Content-Length",
+      "Content-Disposition, Content-Type, Content-Length, Content-Range, Accept-Ranges",
     );
 
     if (req.method === "OPTIONS") {
@@ -47,53 +45,45 @@ async function startServer() {
     next();
   });
 
-  // API Route: Validate URL
   app.post("/api/validate", (req, res) => {
     const { url } = req.body;
-    if (!url || typeof url !== "string") {
+    if (!url || typeof url !== "string")
       return res.status(400).json({ error: "URL is required" });
-    }
     const platform = detectPlatform(url);
-    const isValid = platform !== "default";
-    res.json({ valid: isValid, platform });
+    res.json({ valid: platform !== "default", platform });
   });
 
-  // API Route: Extract Metadata
   app.post("/api/extract", async (req, res) => {
     const { url } = req.body;
-    if (!url || typeof url !== "string") {
+    if (!url || typeof url !== "string")
       return res.status(400).json({ error: "URL is required" });
-    }
-
     try {
       const metadata = await extractVideoMetadata(url);
       res.json(metadata);
     } catch (err: any) {
-      console.error("Metadata extraction error:", err);
       res
         .status(500)
         .json({ error: err.message || "Failed to extract video details" });
     }
   });
 
-  // [FIXED] API Route: রিয়াল-টাইম ডাইনামিক সোর্স প্রক্সি ইঞ্জিন (ডামি ফাইল রিমুভড)
+  // [ULTIMATE FIX] প্লেয়ারে প্লে এবং ডাউনলোড দুটোই একসাথে রিয়াল-টাইমে করার ইঞ্জিন
   app.get("/api/stream", async (req, res) => {
     const { quality, title, url } = req.query;
 
-    // ইউজারের পাঠানো মেইন লিংকটি যদি না থাকে
     if (!url) {
-      return res.status(400).send("Target video/audio URL is required.");
+      return res.status(400).send("Target dynamic URL parameter is missing.");
     }
 
     const isAudio = quality === "mp3" || quality === "audio";
     const extension = isAudio ? "mp3" : "mp4";
     const filename =
-      sanitizeFilename((title as string) || "download") + `.${extension}`;
+      sanitizeFilename((title as string) || "media_stream") + `.${extension}`;
 
     let sourceMediaUrl = "";
 
     try {
-      // Cobalt API টানেল দিয়ে আসল মিডিয়া বাইনারি লিংক ফেচ করা
+      // Cobalt API থেকে রিয়াল ডাইনামিক সোর্স ইউআরএল জেনারেট করা
       const cobaltApiResponse = await fetch(
         "https://api.cobalt.tools/api/json",
         {
@@ -119,48 +109,46 @@ async function startServer() {
         }
       }
 
+      // যদি কোনো কারণে টানেল কাজ না করে, ওরিজিনাল লিংকে রিডাইরেক্ট করবে (প্লেয়ার যেন ব্ল্যাঙ্ক না থাকে)
       if (!sourceMediaUrl) {
-        throw new Error("Unable to parse live stream link from the endpoint.");
+        return res.redirect(decodeURIComponent(url as string));
       }
 
+      // [CRITICAL FOR PLAYER] ব্রাউজার প্লেয়ার যদি পারশিয়াল/রেঞ্জ ডেটা রিকোয়েস্ট করে (ভিডিও প্লে করার জন্য)
+      if (req.headers.range) {
+        return res.redirect(sourceMediaUrl);
+      }
+
+      // নরমাল ডাউনলোডের জন্য স্ট্রিম পাইপলাইন (বাটনে ক্লিক করলে যা কাজ করে)
       const response = await fetch(sourceMediaUrl, {
         headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
           Accept: "*/*",
         },
       });
 
       if (!response.ok || !response.body) {
-        throw new Error(
-          `Target cloud host responded with status ${response.status}`,
-        );
+        return res.redirect(sourceMediaUrl);
       }
 
-      // ডাউনলোড ফোর্স করার জন্য হেডারস
       res.setHeader(
         "Content-Disposition",
         `attachment; filename="${encodeURIComponent(filename)}"`,
       );
       res.setHeader("Content-Type", isAudio ? "audio/mpeg" : "video/mp4");
 
-      // নোড জেনারেটর পাইপ দিয়ে সরাসরি ডাউনলোড শুরু করা
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
-    } catch (err: any) {
+    } catch (err) {
       console.error(
-        "Local core proxy engine failed, falling back to direct link:",
+        "Core streaming engine bypass, redirecting to raw source:",
         err,
       );
-      if (sourceMediaUrl) {
-        res.redirect(sourceMediaUrl);
-      } else {
-        res.status(500).send("Streaming handshake failed.");
-      }
+      if (sourceMediaUrl) res.redirect(sourceMediaUrl);
+      else res.redirect(decodeURIComponent(url as string));
     }
   });
 
-  // Vite Integration
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -170,14 +158,12 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+    app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  app.listen(PORT, "0.0.0.0", () =>
+    console.log(`[CORE RUNNING] http://localhost:${PORT}`),
+  );
 }
 
 startServer();
