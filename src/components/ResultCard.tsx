@@ -1,7 +1,16 @@
 import React, { useState } from "react";
 import { VideoMetadata, DownloadOption, getApiUrl } from "../types.js";
 import { brandThemes } from "./brandThemes.js";
-import { Play, Download, Music, Loader2, CheckCircle2, ShieldCheck, Zap, Activity } from "lucide-react";
+import {
+  Play,
+  Download,
+  Music,
+  Loader2,
+  CheckCircle2,
+  ShieldCheck,
+  Zap,
+  Activity,
+} from "lucide-react";
 
 interface ResultCardProps {
   metadata: VideoMetadata;
@@ -10,7 +19,7 @@ interface ResultCardProps {
 export default function ResultCard({ metadata }: ResultCardProps) {
   const currentTheme = brandThemes[metadata.platform] || brandThemes.default;
   const [selectedOptionId, setSelectedOptionId] = useState<string>(
-    metadata.options[0]?.id || ""
+    metadata.options[0]?.id || "",
   );
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDone, setIsDone] = useState(false);
@@ -33,13 +42,23 @@ export default function ResultCard({ metadata }: ResultCardProps) {
   };
 
   // Find currently selected option
-  const activeOption = metadata.options.find((opt) => opt.id === selectedOptionId) || metadata.options[0];
+  const activeOption =
+    metadata.options.find((opt) => opt.id === selectedOptionId) ||
+    metadata.options[0];
 
   // Initiate direct browser download stream as a chunked blob bypasses all same-origin redirects and sandbox blocks
   const handleDownloadTrigger = async () => {
     if (!activeOption) return;
     setIsProcessing(true);
     setIsDone(false);
+
+    // Extract a nice safe filename
+    const titleCleaned =
+      metadata.title
+        .replace(/[\\/*?:"<>|]/g, "")
+        .replace(/\s+/g, "_")
+        .substring(0, 45) || "media_stream";
+    const filename = `${titleCleaned}.${activeOption.format}`;
 
     try {
       // Simulate rapid premium handshake with server bypass
@@ -56,43 +75,45 @@ export default function ResultCard({ metadata }: ResultCardProps) {
       const mediaBlob = await response.blob();
       const objectUrl = window.URL.createObjectURL(mediaBlob);
 
-      // Extract a nice safe filename
-      const titleCleaned = metadata.title
-        .replace(/[\\/*?:"<>|]/g, "")
-        .replace(/\s+/g, "_")
-        .substring(0, 45) || "media_stream";
-      const filename = `${titleCleaned}.${activeOption.format}`;
-
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
       anchor.download = filename;
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
-      
+
       // Delay revoking slightly to let download initiate successfully
       setTimeout(() => {
         window.URL.revokeObjectURL(objectUrl);
       }, 100);
 
       setIsDone(true);
-      // Soft reset status after brief window
-      setTimeout(() => {
-        setIsDone(false);
-      }, 3000);
+      setTimeout(() => setIsDone(false), 3000);
     } catch (err) {
-      console.error("Downloader interface trigger failed direct stream:", err);
-      // Fallback: If fetch is somehow blocked or cors fails, redirect browser to direct url
+      console.error(
+        "Downloader interface trigger failed direct stream, applying API Force-Download Fallback:",
+        err,
+      );
+
+      // [FIXED] Fallback Mechanism: ব্রাউজারকে ডিরেক্ট রিডাইরেক্ট না করে ব্যাকএন্ড এপিআই দিয়ে ফোর্স ডাউনলোড করানো হচ্ছে
       try {
+        const fallbackUrl = getApiUrl(
+          `${activeOption.url}&download=true&filename=${encodeURIComponent(filename)}`,
+        );
+
         const fallbackAnchor = document.createElement("a");
-        fallbackAnchor.href = getApiUrl(activeOption.url);
-        fallbackAnchor.target = "_blank";
-        fallbackAnchor.setAttribute("download", "");
+        fallbackAnchor.href = fallbackUrl;
+        // target="_self" ব্যবহার করা হয়েছে যেন নতুন ট্যাব ওপেন না হয়ে সরাসরি ব্রাউজার ডাউনলোড ট্রিগার করে
+        fallbackAnchor.target = "_self";
+        fallbackAnchor.setAttribute("download", filename);
         document.body.appendChild(fallbackAnchor);
         fallbackAnchor.click();
         document.body.removeChild(fallbackAnchor);
+
+        setIsDone(true);
+        setTimeout(() => setIsDone(false), 3000);
       } catch (fallbackErr) {
-        console.error("Simple link download fallback failed:", fallbackErr);
+        console.error("Advanced API download fallback failed:", fallbackErr);
       }
     } finally {
       setIsProcessing(false);
@@ -100,16 +121,20 @@ export default function ResultCard({ metadata }: ResultCardProps) {
   };
 
   return (
-    <div id="result-metadata-container" className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
-      
+    <div
+      id="result-metadata-container"
+      className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full"
+    >
       {/* CARD 1: Main Info Bento Unit (col-span-8) */}
       <div className="col-span-1 lg:col-span-8 bg-[#0A0A0A]/40 border border-white/5 rounded-3xl p-6 backdrop-blur-xl relative overflow-hidden group hover:border-white/10 transition-all duration-300 flex flex-col justify-between min-h-[380px]">
         {/* Neon top border line decoration */}
-        <div className={`absolute top-0 left-0 w-full h-[3px] ${currentTheme.topLineHighlight}`} />
+        <div
+          className={`absolute top-0 left-0 w-full h-[3px] ${currentTheme.topLineHighlight}`}
+        />
 
         <div className="flex flex-col md:flex-row gap-6 h-full">
           {/* Aspect ratio video preview block */}
-          <div 
+          <div
             className="w-full md:w-64 h-48 md:h-full min-h-[180px] rounded-2xl bg-[#030303] relative overflow-hidden shadow-2xl shrink-0 group cursor-pointer"
             onClick={() => {
               if (!isPlaying) setIsPlaying(true);
@@ -158,7 +183,9 @@ export default function ResultCard({ metadata }: ResultCardProps) {
 
                 {/* Overlay indicators alignment */}
                 <div className="absolute bottom-3 left-3 right-3 flex justify-between items-center">
-                  <span className={`px-2 py-0.5 border text-[9px] font-mono font-bold rounded uppercase tracking-widest ${currentTheme.badgeBackground}`}>
+                  <span
+                    className={`px-2 py-0.5 border text-[9px] font-mono font-bold rounded uppercase tracking-widest ${currentTheme.badgeBackground}`}
+                  >
                     Decrypted
                   </span>
                   {metadata.duration && (
@@ -176,7 +203,9 @@ export default function ResultCard({ metadata }: ResultCardProps) {
             <div>
               {/* Dynamic Badges */}
               <div className="flex flex-wrap gap-2 mb-3">
-                <span className={`px-2 py-1 rounded border text-[9px] font-bold uppercase tracking-wider ${currentTheme.badgeBackground}`}>
+                <span
+                  className={`px-2 py-1 rounded border text-[9px] font-bold uppercase tracking-wider ${currentTheme.badgeBackground}`}
+                >
                   {metadata.platform} Detected
                 </span>
                 <span className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 text-[9px] font-bold uppercase tracking-wider border border-emerald-500/20 flex items-center gap-1">
@@ -185,19 +214,27 @@ export default function ResultCard({ metadata }: ResultCardProps) {
                 </span>
               </div>
 
-              <h2 id="result-video-title" className="text-xl md:text-2xl font-bold tracking-tight text-white leading-snug">
+              <h2
+                id="result-video-title"
+                className="text-xl md:text-2xl font-bold tracking-tight text-white leading-snug"
+              >
                 {metadata.title}
               </h2>
               <p className="mt-2 text-xs text-zinc-400 line-clamp-3 leading-relaxed">
-                {metadata.description || "Stream container decrypted, headers optimized, and bandwidth channels initialized correctly."}
+                {metadata.description ||
+                  "Stream container decrypted, headers optimized, and bandwidth channels initialized correctly."}
               </p>
             </div>
 
             {/* Internal dual status indicators grid */}
             <div className="grid grid-cols-2 gap-4 mt-4 md:mt-0">
               <div className="bg-zinc-900/40 p-3.5 rounded-2xl border border-white/5">
-                <p className="text-[9px] text-zinc-500 uppercase font-bold tracking-widest font-mono mb-1">Estimated Size</p>
-                <p className="text-base md:text-lg font-mono text-zinc-100">{activeOption?.size || "Cached resolution size"}</p>
+                <p className="text-[9px] text-zinc-500 uppercase font-bold tracking-widest font-mono mb-1">
+                  Estimated Size
+                </p>
+                <p className="text-base md:text-lg font-mono text-zinc-100">
+                  {activeOption?.size || "Cached resolution size"}
+                </p>
               </div>
               <div className="bg-zinc-900/40 p-3.5 rounded-2xl border border-white/5">
                 <p className="text-[9px] text-zinc-500 uppercase font-bold tracking-widest font-mono mb-1 flex items-center gap-1">
@@ -205,7 +242,9 @@ export default function ResultCard({ metadata }: ResultCardProps) {
                   Stream Handshake
                 </p>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-sm font-semibold text-emerald-400 font-mono">Ready</span>
+                  <span className="text-sm font-semibold text-emerald-400 font-mono">
+                    Ready
+                  </span>
                   <div className="h-1.5 flex-grow bg-zinc-800 rounded-full overflow-hidden">
                     <div className="h-full w-full bg-emerald-500 rounded-full" />
                   </div>
@@ -218,16 +257,18 @@ export default function ResultCard({ metadata }: ResultCardProps) {
 
       {/* CARD 2: Right-hand Selector & Action Grid (col-span-4) */}
       <div className="col-span-1 lg:col-span-4 flex flex-col gap-6">
-        
         {/* Choices box */}
         <div className="flex-1 bg-[#0A0A0A]/40 border border-white/5 rounded-3xl p-5 backdrop-blur-xl relative overflow-hidden flex flex-col justify-between">
           <div>
-            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4">Choose Resolution</h3>
-            
+            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4">
+              Choose Resolution
+            </h3>
+
             <div className="space-y-2">
               {metadata.options.map((opt) => {
                 const isSelected = opt.id === selectedOptionId;
-                const isMediaAudio = opt.format === "mp3" || opt.quality === "audio";
+                const isMediaAudio =
+                  opt.format === "mp3" || opt.quality === "audio";
                 return (
                   <button
                     key={opt.id}
@@ -243,14 +284,26 @@ export default function ResultCard({ metadata }: ResultCardProps) {
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded flex items-center justify-center text-[11px] font-bold ${
-                        isSelected ? "bg-red-600 text-white shadow-md shadow-red-500/20" : "bg-zinc-800 text-zinc-400"
-                      }`}>
-                        {isMediaAudio ? "MP3" : opt.quality.includes("p") ? opt.quality.toUpperCase() : "HD"}
+                      <div
+                        className={`w-8 h-8 rounded flex items-center justify-center text-[11px] font-bold ${
+                          isSelected
+                            ? "bg-red-600 text-white shadow-md shadow-red-500/20"
+                            : "bg-zinc-800 text-zinc-400"
+                        }`}
+                      >
+                        {isMediaAudio
+                          ? "MP3"
+                          : opt.quality.includes("p")
+                            ? opt.quality.toUpperCase()
+                            : "HD"}
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-zinc-100">{opt.label}</p>
-                        <p className="text-[10px] text-zinc-450 font-mono uppercase">{opt.format} • stream direct</p>
+                        <p className="text-xs font-bold text-zinc-100">
+                          {opt.label}
+                        </p>
+                        <p className="text-[10px] text-zinc-450 font-mono uppercase">
+                          {opt.format} • stream direct
+                        </p>
                       </div>
                     </div>
                     {opt.size && (
@@ -264,7 +317,7 @@ export default function ResultCard({ metadata }: ResultCardProps) {
             </div>
           </div>
 
-          {/* Download trigger protocol - Nested inside right hand choice bento */}
+          {/* Download trigger protocol */}
           <div className="pt-5 mt-4 border-t border-white/5">
             <button
               id="btn-trigger-download"
@@ -274,8 +327,8 @@ export default function ResultCard({ metadata }: ResultCardProps) {
                 isDone
                   ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-xl shadow-emerald-600/25"
                   : isProcessing
-                  ? "bg-zinc-900 border border-white/5 text-zinc-500 cursor-not-allowed"
-                  : currentTheme.buttonStyles
+                    ? "bg-zinc-900 border border-white/5 text-zinc-500 cursor-not-allowed"
+                    : currentTheme.buttonStyles
               } hover:scale-[1.008] active:scale-[0.99]`}
             >
               {isDone ? (
@@ -291,7 +344,9 @@ export default function ResultCard({ metadata }: ResultCardProps) {
               ) : (
                 <>
                   <Download className="h-4 w-4 shrink-0" />
-                  <span>DOWNLOAD ({activeOption?.format?.toUpperCase() || "MP4"})</span>
+                  <span>
+                    DOWNLOAD ({activeOption?.format?.toUpperCase() || "MP4"})
+                  </span>
                 </>
               )}
             </button>
@@ -304,15 +359,18 @@ export default function ResultCard({ metadata }: ResultCardProps) {
             <Zap className="h-6 w-6 text-red-500" />
           </div>
           <div>
-            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest font-mono">Pipeline Speed</p>
+            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest font-mono">
+              Pipeline Speed
+            </p>
             <p className="text-2xl font-mono text-red-500 font-extrabold flex items-baseline gap-1">
-              128.4 <span className="text-xs text-zinc-450 uppercase font-sans font-semibold tracking-wider">MB/s</span>
+              128.4{" "}
+              <span className="text-xs text-zinc-450 uppercase font-sans font-semibold tracking-wider">
+                MB/s
+              </span>
             </p>
           </div>
         </div>
-
       </div>
-
     </div>
   );
 }
